@@ -11,16 +11,14 @@ const ort = window.ort;
 ort.env.wasm.wasmPaths = ORT_WASM;
 ort.env.wasm.numThreads = 1;
 
-async function dir() {
-  const root = await navigator.storage.getDirectory();
-  return root.getDirectoryHandle('voz', { create: true });
-}
+// Guarda a voz no armazenamento do navegador (Cache Storage: Chrome, Android e iPhone)
+const CACHE = 'voz-do-pai-v1';
+const key = (name) => new Request('./_voz/' + name);
 async function readFile(name) {
-  try { return await (await (await dir()).getFileHandle(name)).getFile(); } catch (e) { return null; }
+  try { const r = await (await caches.open(CACHE)).match(key(name)); return r ? await r.blob() : null; } catch (e) { return null; }
 }
 async function writeFile(name, blob) {
-  const h = await (await dir()).getFileHandle(name, { create: true });
-  const w = await h.createWritable(); await w.write(blob); await w.close();
+  await (await caches.open(CACHE)).put(key(name), new Response(blob));
 }
 
 async function fetchWithProgress(url, onProgress) {
@@ -36,7 +34,7 @@ async function fetchWithProgress(url, onProgress) {
 }
 
 export function supported() {
-  return !!(navigator.storage && navigator.storage.getDirectory && window.ort);
+  return !!(window.caches && window.ort);
 }
 
 export async function isDownloaded() {
