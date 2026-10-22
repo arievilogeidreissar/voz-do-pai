@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Voz do Pai</title>
+<meta name="theme-color" content="#1f6b52">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Fraunces:opsz,wght@9..144,600&display=swap">
+<style>
+:root{
+  --bg:#f5f3ee; --surface:#ffffff; --fg:#1d2420; --muted:#5d6862;
+  --accent:#1f6b52; --accent-fg:#ffffff; --wa:#1a8a4a; --line:#d9dcd4; --chip:#e8efe9; --warn:#a33a2a; --notice:#fff6dc;
+  --display:"Fraunces", Georgia, serif;
+  --body:"Atkinson Hyperlegible", system-ui, -apple-system, sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#141a17; --surface:#1d2521; --fg:#eef2ee; --muted:#9fb0a7;
+  --accent:#4fbf94; --accent-fg:#0e1512; --wa:#3fcf7d; --line:#2f3a34; --chip:#24312b; --warn:#ef8a78; --notice:#2d2a1c; color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-size:18px;line-height:1.4}
+.wrap{max-width:720px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:max(16px,env(safe-area-inset-top,0px)) 40px;display:flex;flex-direction:column;gap:20px}
+h1{font-family:var(--display);font-size:28px;margin:0;font-weight:600}
+.sub{color:var(--muted);margin:2px 0 0;font-size:16px}
+textarea{width:100%;min-height:140px;font:inherit;font-size:26px;line-height:1.3;padding:14px;border:2px solid var(--line);border-radius:14px;background:var(--surface);color:var(--fg);resize:vertical}
+textarea:focus-visible,button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+button{font:inherit;cursor:pointer;border-radius:12px;border:2px solid var(--line);background:var(--surface);color:var(--fg);padding:12px 16px}
+button:disabled{opacity:.6;cursor:wait}
+.big{font-size:24px;font-weight:700;padding:18px 10px}
+.speak{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.send{background:var(--wa);color:#fff;border-color:var(--wa)}
+.send.ready{animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{50%{transform:scale(1.03)}}
+.clear{grid-column:1/-1;font-size:16px;padding:8px}
+.status{min-height:1.4em;color:var(--muted);font-size:17px;margin:-8px 0 0}
+.status.err{color:var(--warn)}
+.card{background:var(--notice);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.card p{margin:0}
+.bar{height:12px;background:var(--line);border-radius:6px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+h2{font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0;font-weight:700}
+.head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.chip{background:var(--chip);border-color:transparent;text-align:left;font-size:20px;min-height:64px;position:relative}
+.chip .x{position:absolute;top:2px;right:6px;font-size:16px;color:var(--warn)}
+.editing .chip{border-color:var(--warn)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.row label{color:var(--muted);font-size:16px}
+.hist button{display:block;width:100%;text-align:left;border:none;border-bottom:1px solid var(--line);border-radius:0;background:transparent;font-size:18px;padding:12px 4px}
+.small{font-size:16px;padding:8px 12px}
+.note{color:var(--muted);font-size:15px;margin:0}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/onnxruntime-web/1.18.0/ort.min.js"></script>
+<script src="lame.min.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Voz do Pai</h1>
+    <p class="sub">Escreva e toque em Falar, ou mande como áudio no WhatsApp.</p>
+  </header>
+
+  <div class="card" id="setup" hidden>
+    <p><strong>Ativar a voz natural</strong><br>Uma voz masculina, bem menos robótica. Baixa uma vez só (uns 60 MB). Use o Wi-Fi.</p>
+    <button class="speak big" id="dl">Baixar a voz</button>
+    <div class="bar" id="bar" hidden><i id="barFill"></i></div>
+  </div>
+
+  <textarea id="txt" placeholder="Escreva aqui o que quer dizer…" aria-label="Texto para falar"></textarea>
+
+  <div class="actions">
+    <button class="speak big" id="speak">🔊 Falar</button>
+    <button class="send big" id="send">💬 Mandar áudio</button>
+    <button class="clear" id="clear">Apagar texto</button>
+  </div>
+  <p class="status" id="status" role="status"></p>
+
+  <section>
+    <div class="head">
+      <h2>Frases prontas</h2>
+      <div class="row">
+        <button class="small" id="addPhrase">+ Salvar frase</button>
+        <button class="small" id="editMode">Editar</button>
+      </div>
+    </div>
+    <div class="grid" id="phrases"></div>
+    <p class="note" id="editNote" hidden>Toque numa frase para removê-la. Toque em "Pronto" para sair.</p>
+    <p class="note" style="margin-top:8px">Toque numa frase para falar. Segure para colocar no campo e mandar como áudio.</p>
+  </section>
+
+  <section>
+    <h2 style="margin-bottom:10px">Últimas faladas</h2>
+    <div class="hist" id="hist"><p class="note">O que ele falar aparece aqui para repetir com um toque.</p></div>
+  </section>
+
+  <section>
+    <h2 style="margin-bottom:10px">Ajustes</h2>
+    <div class="row">
+      <label for="rate">Velocidade</label>
+      <input type="range" id="rate" min="0.7" max="1.3" step="0.05" value="1" style="flex:1">
+      <button class="small" id="test">Testar</button>
+    </div>
+  </section>
+</div>
+
+<script type="module">
+import * as tts from './tts.js';
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d } catch (e) { return d } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)) } catch (e) {} }
+};
+const DEFAULTS = ["Sim","Não","Obrigado","Estou com sede","Estou com fome","Preciso ir ao banheiro","Estou com dor","Estou bem","Me ajuda, por favor","Chama a enfermeira","Te amo","Espera um pouco"];
+let phrases = store.get("phrases", DEFAULTS), hist = store.get("hist", []), editing = false;
+let natural = false, busy = false, pendingFile = null;
+const cache = new Map();
+const player = new Audio();
+
+function status(msg, err) { $("status").textContent = msg || ""; $("status").classList.toggle("err", !!err); }
+const rate = () => parseFloat($("rate").value);
+
+async function getAudio(text) {
+  const key = rate() + "|" + text;
+  if (cache.has(key)) return cache.get(key);
+  const { samples, sampleRate } = await tts.synth(text, rate());
+  const item = { samples, sampleRate, wav: null, mp3: null };
+  cache.set(key, item);
+  if (cache.size > 30) cache.delete(cache.keys().next().value);
+  return item;
+}
+
+function systemSpeak(text) {
+  const s = window.speechSynthesis; if (!s) return status("Este celular não tem voz disponível.", true);
+  s.cancel();
+  const u = new SpeechSynthesisUtterance(text); u.lang = "pt-BR"; u.rate = rate();
+  const v = s.getVoices().filter(v => /^pt/i.test(v.lang));
+  const m = v.find(v => /male|masculin|daniel|felipe|ricardo|antonio/i.test(v.name) && !/female|feminin/i.test(v.name));
+  if (m) u.voice = m;
+  s.speak(u);
+}
+
+function remember(text) {
+  hist = [text, ...hist.filter(h => h !== text)].slice(0, 8); store.set("hist", hist); renderHist();
+}
+
+async function speak(text) {
+  text = (text || "").trim(); if (!text || busy) return;
+  remember(text);
+  if (!natural) { systemSpeak(text); return; }
+  busy = true; $("speak").disabled = true; status("Preparando a voz…");
+  try {
+    const a = await getAudio(text);
+    a.wav = a.wav || URL.createObjectURL(tts.toWav(a.samples, a.sampleRate));
+    player.src = a.wav; await player.play(); status("");
+  } catch (e) {
+    console.error(e); status("A voz natural falhou, usando a voz do celular.", true); systemSpeak(text);
+  } finally { busy = false; $("speak").disabled = false; }
+}
+
+async function share(file) {
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    await navigator.share({ files: [file] });
+    return true;
+  }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(file); a.download = file.name;
+  document.body.appendChild(a); a.click(); a.remove();
+  status("Áudio salvo em Downloads. No WhatsApp, toque no clipe › Áudio para enviar.");
+  return true;
+}
+
+async function sendAudio() {
+  if (pendingFile) {
+    const f = pendingFile; resetSend();
+    try { await share(f); status(""); } catch (e) { if (e.name !== "AbortError") status("Não deu para abrir o compartilhamento.", true); }
+    return;
+  }
+  const text = $("txt").value.trim();
+  if (!text) return status("Escreva a mensagem no campo de cima primeiro.", true);
+  if (!natural) { $("setup").scrollIntoView({ behavior: "smooth" }); return status("Para mandar áudio, baixe a voz natural primeiro.", true); }
+  if (busy) return;
+  busy = true; $("send").disabled = true; status("Gerando o áudio…");
+  try {
+    const a = await getAudio(text);
+    a.mp3 = a.mp3 || tts.toMp3(a.samples, a.sampleRate);
+    const file = new File([a.mp3], "mensagem.mp3", { type: "audio/mpeg" });
+    remember(text);
+    try { await share(file); status(""); }
+    catch (e) {
+      if (e.name === "AbortError") { status(""); }
+      else { pendingFile = file; $("send").textContent = "✅ Tocar para enviar"; $("send").classList.add("ready"); status("Áudio pronto. Toque no botão verde para escolher o WhatsApp."); }
+    }
+  } catch (e) { console.error(e); status("Não consegui gerar o áudio. Tente de novo.", true); }
+  finally { busy = false; $("send").disabled = false; }
+}
+function resetSend() { pendingFile = null; $("send").textContent = "💬 Mandar áudio"; $("send").classList.remove("ready"); }
+
+function renderPhrases() {
+  const g = $("phrases"); g.innerHTML = "";
+  phrases.forEach((p, i) => {
+    const b = document.createElement("button"); b.className = "chip"; b.textContent = p;
+    if (editing) { const x = document.createElement("span"); x.className = "x"; x.textContent = "✕"; b.appendChild(x); }
+    let held = false, t;
+    b.addEventListener("pointerdown", () => { held = false; t = setTimeout(() => { held = true; $("txt").value = p; resetSend(); status("Frase no campo. Toque em Mandar áudio."); }, 600); });
+    ["pointerup", "pointerleave", "pointercancel"].forEach(ev => b.addEventListener(ev, () => clearTimeout(t)));
+    b.addEventListener("contextmenu", e => e.preventDefault());
+    b.onclick = () => {
+      if (held) return;
+      if (editing) { phrases.splice(i, 1); store.set("phrases", phrases); renderPhrases(); }
+      else speak(p);
+    };
+    g.appendChild(b);
+  });
+}
+function renderHist() {
+  const h = $("hist"); if (!hist.length) return; h.innerHTML = "";
+  hist.forEach(t => { const b = document.createElement("button"); b.textContent = t; b.onclick = () => speak(t); h.appendChild(b); });
+}
+
+async function initVoice() {
+  if (!tts.supported()) { status("Este navegador não tem a voz natural. Abra no Chrome.", true); return; }
+  natural = await tts.isDownloaded();
+  $("setup").hidden = natural;
+}
+$("dl").onclick = async () => {
+  $("dl").disabled = true; $("dl").textContent = "Baixando…"; $("bar").hidden = false;
+  try {
+    await tts.download(p => { $("barFill").style.width = Math.round(p * 100) + "%"; $("dl").textContent = "Baixando… " + Math.round(p * 100) + "%"; });
+    natural = true; $("setup").hidden = true; status("Voz natural pronta! Toque em Testar.");
+  } catch (e) {
+    console.error(e); $("dl").disabled = false; $("dl").textContent = "Tentar de novo"; status("O download falhou. Confira a internet e tente de novo.", true);
+  }
+};
+
+$("rate").value = store.get("rate", 1);
+$("rate").oninput = e => { store.set("rate", e.target.value); resetSend(); };
+$("speak").onclick = () => speak($("txt").value);
+$("send").onclick = sendAudio;
+$("clear").onclick = () => { $("txt").value = ""; resetSend(); status(""); $("txt").focus(); };
+$("txt").addEventListener("input", resetSend);
+$("test").onclick = () => speak("Olá, esta é a minha voz.");
+$("addPhrase").onclick = () => {
+  const t = $("txt").value.trim();
+  if (!t) return status("Escreva a frase no campo de cima e toque em Salvar frase.", true);
+  if (!phrases.includes(t)) { phrases.push(t); store.set("phrases", phrases); renderPhrases(); }
+  status(`Frase salva: "${t}"`);
+};
+$("editMode").onclick = () => {
+  editing = !editing; $("editMode").textContent = editing ? "Pronto" : "Editar";
+  document.body.classList.toggle("editing", editing); $("editNote").hidden = !editing; renderPhrases();
+};
+renderPhrases(); renderHist(); initVoice();
+</script>
+</body>
+</html>
